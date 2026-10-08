@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="贝希涂色台">
+<meta name="apple-mobile-web-app-title" content="涂色台">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23ff5d8f'/%3E%3Ccircle cx='50' cy='50' r='22' fill='%23fff'/%3E%3C/svg%3E">
-<title>贝希涂色台</title>
+<title>涂色台 · 线稿快速填色</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overscroll-behavior:none}
@@ -60,15 +60,15 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:#15151a;color
 </head>
 <body>
 <div id="lockScreen">
-<h1>贝希涂色台</h1>
-<div class="sub">输入密码进门 · 宝宝专用</div>
+<h1>涂色台</h1>
+<div class="sub">输入密码进门</div>
 <input id="pwInput" type="password" inputmode="numeric" placeholder="密码">
 <button id="unlockBtn">开 门</button>
 <div id="lockErr"></div>
 </div>
 <div id="app">
 <div id="topbar">
-<span class="brand">贝希涂色台</span>
+<span class="brand">涂色台</span>
 <button id="fileBtn">导入PNG/PSD</button>
 <button id="newLayerBtn">＋图层</button>
 <button id="upBtn">上移</button>
@@ -148,7 +148,7 @@ $("unlockBtn").onclick=async()=>{
  const v=$("pwInput").value.trim();
  const h=await sha256(v);
  if(h===PASS_HASH){localStorage.setItem("bxtc_ok","1");unlockUI();}
- else{$("lockErr").textContent="密码不对，宝宝再想想";$("pwInput").value="";}
+ else{$("lockErr").textContent="密码不对";$("pwInput").value="";}
 };
 $("pwInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("unlockBtn").click();});
 if(localStorage.getItem("bxtc_ok")==="1")unlockUI();
@@ -768,7 +768,7 @@ $("pngBtn").onclick=()=>{
   compositeVisible().toBlob(b=>{
    const a=document.createElement("a");
    a.href=URL.createObjectURL(b);
-   a.download="beixi-"+Date.now()+".png";
+   a.download="fill-"+Date.now()+".png";
    a.click();
    showBusy(false);
   },"image/png");
@@ -783,7 +783,7 @@ $("psdBtn").onclick=()=>{
    const blob=new Blob([bytes],{type:"image/vnd.adobe.photoshop"});
    const a=document.createElement("a");
    a.href=URL.createObjectURL(blob);
-   a.download="beixi-"+Date.now()+".psd";
+   a.download="fill-"+Date.now()+".psd";
    a.click();
   }catch(err){console.error(err);alert("PSD生成失败："+err.message);}
   showBusy(false);
