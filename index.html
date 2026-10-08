@@ -400,115 +400,129 @@ function unpackRow(u8,si,len,out,di,w){
  }
 }
 function loadPsd(buf){
- return new Promise(res=>{
+ return new Promise((res,rej)=>{
   const u8=new Uint8Array(buf);
   const dv=new DataView(buf);
-  let o=0;
-  if(String.fromCharCode(u8[0],u8[1],u8[2],u8[3])!=="8BPS")throw new Error("不是PSD文件");
-  o=4;
-  o+=2+6;
-  o+=2;
-  const h=dv.getUint32(o);o+=4;
-  const w=dv.getUint32(o);o+=4;
-  const depth=dv.getUint16(o);o+=2;
-  const mode=dv.getUint16(o);o+=2;
-  if(depth!==8)throw new Error("只支持8位PSD");
-  if(mode!==3&&mode!==1)throw new Error("只支持RGB/灰度PSD，CMYK打不开");
-  if(w>4096||h>4096)throw new Error("画布超过4096，太大了");
-  o+=4+dv.getUint32(o);
-  o+=4+dv.getUint32(o);
-  o+=4;
-  o+=4;
-  const cnt=dv.getInt16(o);o+=2;
-  const n=Math.abs(cnt);
-  const metas=[];
-  for(let i=0;i<n;i++){
-   const top=dv.getInt32(o),left=dv.getInt32(o+4),bottom=dv.getInt32(o+8),right=dv.getInt32(o+12);o+=16;
-   const nch=dv.getUint16(o);o+=2;
-   const chs=[];
-   for(let c=0;c<nch;c++){chs.push({id:dv.getInt16(o),len:dv.getUint32(o+2)});o+=6;}
-   o+=8;
-   const opacity=dv.getUint8(o);o++;
-   o++;
-   const flags=dv.getUint8(o);o++;
-   o++;
-   const extraLen=dv.getUint32(o);o+=4;
-   const extraEnd=o+extraLen;
-   o+=4+dv.getUint32(o);
-   o+=4+dv.getUint32(o);
-   const nameLen=dv.getUint8(o);o++;
-   let name="";
-   for(let k=0;k<nameLen;k++)name+=String.fromCharCode(u8[o+k]);
-   const pad=(4-((1+nameLen)%4))%4;
-   o+=nameLen+pad;
-   if(!name)name="图层"+i;
-   for(let s=o;s<extraEnd-8;s++){
-    if(u8[s]===0x38&&u8[s+1]===0x42&&u8[s+2]===0x49&&u8[s+3]===0x4D&&
-       u8[s+4]===0x6C&&u8[s+5]===0x75&&u8[s+6]===0x6E&&u8[s+7]===0x69){
-     const ll=dv.getUint32(s+8);
-     let un="";
-     for(let k=0;k<ll;k+=2)un+=String.fromCharCode(dv.getUint16(s+12+k));
-     if(un)name=un;
-     break;
-    }
-   }
-   metas.push({top,left,bottom,right,chs,opacity,visible:!(flags&2),name});
-   o=extraEnd;
-  }
-  const outLayers=[];
-  for(const m of metas){
-   const lw=m.right-m.left,lh=m.bottom-m.top;
-   const chans={};
-   for(const ci of m.chs){
-    const comp=dv.getUint16(o);o+=2;
-    const data=new Uint8Array(lw*lh);
-    if(comp===0){
-     for(let y=0;y<lh;y++){
-      o+=2;
-      for(let x=0;x<lw;x++)data[y*lw+x]=u8[o+x];
-      o+=lw;
+  let o=0,stage="头";
+  const chk=n=>{if(o+n>u8.length)throw new Error("读越界(偏移"+o+")");};
+  try{
+   stage="签名";
+   if(u8.length<26)throw new Error("文件太小");
+   if(String.fromCharCode(u8[0],u8[1],u8[2],u8[3])!=="8BPS")throw new Error("不是PSD文件");
+   o=4+2+6+2;
+   chk(4);const h=dv.getUint32(o);o+=4;
+   chk(4);const w=dv.getUint32(o);o+=4;
+   chk(2);const depth=dv.getUint16(o);o+=2;
+   chk(2);const mode=dv.getUint16(o);o+=2;
+   if(depth!==8)throw new Error("只支持8位PSD");
+   if(mode!==3&&mode!==1)throw new Error("只支持RGB/灰度PSD，CMYK打不开");
+   if(w>4096||h>4096)throw new Error("画布超过4096，太大了");
+   chk(4);o+=4+dv.getUint32(o);
+   chk(4);o+=4+dv.getUint32(o);
+   chk(4);o+=4;
+   chk(4);o+=4;
+   stage="图层记录";
+   chk(2);const cnt=dv.getInt16(o);o+=2;
+   const n=Math.abs(cnt);
+   const metas=[];
+   for(let i=0;i<n;i++){
+    chk(16);
+    const top=dv.getInt32(o),left=dv.getInt32(o+4),bottom=dv.getInt32(o+8),right=dv.getInt32(o+12);o+=16;
+    chk(2);const nch=dv.getUint16(o);o+=2;
+    const chs=[];
+    for(let c=0;c<nch;c++){chk(6);chs.push({id:dv.getInt16(o),len:dv.getUint32(o+2)});o+=6;}
+    chk(8);o+=8;
+    chk(1);const opacity=dv.getUint8(o);o++;
+    chk(1);o++;
+    chk(1);const flags=dv.getUint8(o);o++;
+    chk(1);o++;
+    chk(4);const extraLen=dv.getUint32(o);o+=4;
+    const extraEnd=o+extraLen;
+    if(extraEnd>u8.length)throw new Error("图层"+(i+1)+"额外数据越界");
+    chk(4);o+=4+dv.getUint32(o);
+    chk(4);o+=4+dv.getUint32(o);
+    chk(1);const nameLen=dv.getUint8(o);o++;
+    let name="";
+    for(let k=0;k<nameLen;k++){chk(1);name+=String.fromCharCode(u8[o+k]);}
+    const pad=(4-((1+nameLen)%4))%4;
+    o+=nameLen+pad;
+    if(o>extraEnd)o=extraEnd;
+    if(!name)name="图层"+i;
+    for(let s=o;s<extraEnd-8;s++){
+     if(u8[s]===0x38&&u8[s+1]===0x42&&u8[s+2]===0x49&&u8[s+3]===0x4D&&
+        u8[s+4]===0x6C&&u8[s+5]===0x75&&u8[s+6]===0x6E&&u8[s+7]===0x69){
+      const ll=dv.getUint32(s+8);
+      let un="";
+      for(let k=0;k<ll;k+=2)un+=String.fromCharCode(dv.getUint16(s+12+k));
+      if(un)name=un;
+      break;
      }
-    } else if(comp===1){
-     for(let y=0;y<lh;y++){
-      const rl=dv.getUint16(o);o+=2;
-      unpackRow(u8,o,rl,data,y*lw,lw);
-      o+=rl;
-     }
-    } else {
-     o+=ci.len-2;
-     continue;
     }
-    chans[ci.id]=data;
+    metas.push({top,left,bottom,right,chs,opacity,visible:!(flags&2),name});
+    o=extraEnd;
    }
-   const cv=document.createElement("canvas");cv.width=w;cv.height=h;
-   const ctx=cv.getContext("2d");
-   const img=ctx.createImageData(w,h);
-   const R=chans[0],G=chans[1],B=chans[2],A=chans[-1];
-   const gray=mode===1;
-   for(let y=0;y<lh;y++){
-    for(let x=0;x<lw;x++){
-     const s=y*lw+x;
-     const di=((m.top+y)*w+(m.left+x))*4;
-     if(gray){
-      const gv=R?R[s]:0;
-      img.data[di]=gv;img.data[di+1]=gv;img.data[di+2]=gv;
+   stage="通道数据";
+   const outLayers=[];
+   for(const m of metas){
+    const lw=m.right-m.left,lh=m.bottom-m.top;
+    const chans={};
+    for(const ci of m.chs){
+     chk(2);const comp=dv.getUint16(o);o+=2;
+     const data=new Uint8Array(lw*lh);
+     if(comp===0){
+      for(let y=0;y<lh;y++){
+       chk(2);o+=2;
+       chk(lw);
+       for(let x=0;x<lw;x++)data[y*lw+x]=u8[o+x];
+       o+=lw;
+      }
+     } else if(comp===1){
+      for(let y=0;y<lh;y++){
+       chk(2);const rl=dv.getUint16(o);o+=2;
+       chk(rl);
+       unpackRow(u8,o,rl,data,y*lw,lw);
+       o+=rl;
+      }
      } else {
-      img.data[di]=R?R[s]:0;
-      img.data[di+1]=G?G[s]:0;
-      img.data[di+2]=B?B[s]:0;
+      if(ci.len<2)throw new Error("通道长度异常");
+      chk(ci.len-2);
+      o+=ci.len-2;
+      continue;
      }
-     img.data[di+3]=A?A[s]:255;
+     chans[ci.id]=data;
     }
+    const cv=document.createElement("canvas");cv.width=w;cv.height=h;
+    const ctx=cv.getContext("2d");
+    const img=ctx.createImageData(w,h);
+    const R=chans[0],G=chans[1],B=chans[2],A=chans[-1];
+    const gray=mode===1;
+    for(let y=0;y<lh;y++){
+     for(let x=0;x<lw;x++){
+      const s=y*lw+x;
+      const di=((m.top+y)*w+(m.left+x))*4;
+      if(gray){
+       const gv=R?R[s]:0;
+       img.data[di]=gv;img.data[di+1]=gv;img.data[di+2]=gv;
+      } else {
+       img.data[di]=R?R[s]:0;
+       img.data[di+1]=G?G[s]:0;
+       img.data[di+2]=B?B[s]:0;
+      }
+      img.data[di+3]=A?A[s]:255;
+     }
+    }
+    ctx.putImageData(img,0,0);
+    outLayers.push({name:m.name,visible:m.visible,opacity:m.opacity,cv});
    }
-   ctx.putImageData(img,0,0);
-   outLayers.push({name:m.name,visible:m.visible,opacity:m.opacity,cv});
+   if(!outLayers.length)throw new Error("PSD里没有图层");
+   layers=outLayers.reverse();
+   activeIdx=layers.length-1;
+   layNum=layers.length;undos=[];
+   fitView();renderLayers();draw();
+   res();
+  }catch(err){
+   rej(new Error(stage+"："+err.message));
   }
-  if(!outLayers.length)throw new Error("PSD里没有图层");
-  layers=outLayers.reverse();
-  activeIdx=layers.length-1;
-  layNum=layers.length;undos=[];
-  fitView();renderLayers();draw();
-  res();
  });
 }
 
