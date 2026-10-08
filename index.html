@@ -22,15 +22,22 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:#15151a;color
 #app{display:none;flex-direction:column;height:100%;height:100dvh}
 #topbar{display:flex;align-items:center;gap:4px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));background:#1e1e26;border-bottom:1px solid #2c2c36;flex-wrap:wrap}
 #topbar .brand{font-weight:700;margin-right:auto;background:linear-gradient(90deg,#ff5d8f,#ff9a62);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:16px}
-#topbar button{background:#2a2a34;color:#ddd;border:none;border-radius:10px;padding:8px 12px;font-size:13px}
+#topbar button{background:#2a2a34;color:#ddd;border:none;border-radius:10px;padding:7px 10px;font-size:12px}
 #topbar button:active{background:#3a3a46}
 #topbar button.hl{background:#ff5d8f;color:#fff;font-weight:600}
-#viewWrap{position:relative;flex:1;overflow:hidden;background:
-repeating-conic-gradient(#2a2a32 0% 25%, #24242c 0% 50%) 0 0/24px 24px}
+#layerBar{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#1a1a20;border-bottom:1px solid #2c2c36;overflow-x:auto;overflow-y:hidden}
+.lyr{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 6px 4px;border-radius:10px;border:1px solid #33333d;background:#23232c;min-width:56px;cursor:pointer;flex-shrink:0}
+.lyr.on{border-color:#ff5d8f;box-shadow:0 0 0 1px #ff5d8f}
+.lyr canvas{width:40px;height:40px;border-radius:6px;background:#333;display:block}
+.lyr .nm{font-size:10px;color:#bbb;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lyr .eye{font-size:10px;color:#888}
+.lyr.hidden{opacity:.45}
+#lyrAdd{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:40px;height:70px;border-radius:10px;border:1px dashed #444;color:#888;font-size:20px;cursor:pointer;flex-shrink:0}
+#viewWrap{position:relative;flex:1;overflow:hidden;background:repeating-conic-gradient(#2a2a32 0% 25%, #24242c 0% 50%) 0 0/24px 24px}
 #view{position:absolute;inset:0}
 #hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#777;font-size:15px;pointer-events:none;text-align:center;padding:20px}
 #busy{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;display:none;z-index:5}
-#panel{background:#1e1e26;border-top:1px solid #2c2c36;padding:12px;overflow-y:auto;max-height:46vh;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+#panel{background:#1e1e26;border-top:1px solid #2c2c36;padding:12px;overflow-y:auto;max-height:44vh;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
 .row{display:flex;gap:12px;align-items:center;margin-bottom:12px}
 .row:last-child{margin-bottom:0}
 #svBox{border-radius:12px;border:1px solid #3a3a46;touch-action:none}
@@ -62,16 +69,21 @@ repeating-conic-gradient(#2a2a32 0% 25%, #24242c 0% 50%) 0 0/24px 24px}
 <div id="app">
 <div id="topbar">
 <span class="brand">贝希涂色台</span>
-<button id="fileBtn">导入线稿</button>
-<button id="pngBtn">导出PNG</button>
-<button id="psdBtn" class="hl">导出PSD</button>
+<button id="fileBtn">导入PNG/PSD</button>
+<button id="newLayerBtn">＋图层</button>
+<button id="upBtn">上移</button>
+<button id="downBtn">下移</button>
+<button id="delBtn">删层</button>
 <button id="undoBtn">撤销</button>
-<button id="clearBtn">清空填色</button>
+<button id="clearBtn">清空本层</button>
+<button id="pngBtn">PNG</button>
+<button id="psdBtn" class="hl">PSD</button>
 <button id="lockBtn">锁</button>
 </div>
+<div id="layerBar"></div>
 <div id="viewWrap">
 <canvas id="view"></canvas>
-<div id="hint">点上面「导入线稿」放一张透明底PNG进来<br>单指画圈填色 · 双指缩放移动</div>
+<div id="hint">点上面「导入PNG/PSD」放文件进来<br>PSD会带着全部图层进来，选一层填色<br>单指画圈填色 · 双指缩放移动</div>
 <div id="busy">处理中…</div>
 </div>
 <div id="panel">
@@ -102,7 +114,7 @@ repeating-conic-gradient(#2a2a32 0% 25%, #24242c 0% 50%) 0 0/24px 24px}
 </div>
 </div>
 </div>
-<input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden>
+<input type="file" id="file" accept="image/png,image/jpeg,image/webp,.psd" hidden>
 <script>
 "use strict";
 const PASS_HASH="460fd82fe0827c5050cb22ea0105c652ead9d77c921e52968d4086a1693cf050";
@@ -116,13 +128,15 @@ let prev=null;
 let hist=[];
 let userPal=[];
 try{userPal=JSON.parse(localStorage.getItem("bxtc_pal")||"[]");}catch(e){}
-let lineCv=null,colorCv=null;
+let layers=[];
+let activeIdx=-1;
 let scale=1,ox=0,oy=0;
 let pts=[],drawing=false;
 const view=$("view"),wrap=$("viewWrap");
 const vctx=view.getContext("2d");
 let pinch=null;
 let undos=[];
+let layNum=0;
 
 /* ---------- 密码锁 ---------- */
 async function sha256(t){
@@ -154,7 +168,7 @@ function curHex(){return rgbToHex(hsvToRgb(cur.h,cur.s,cur.v));}
 function setCur(h,s,v,pushHist){
  cur={h,s,v};
  if(pushHist){hist.unshift(curHex());hist=hist.slice(0,12);}
- renderPicker();renderHist();renderPal();
+ renderPicker();renderHist();
 }
 function renderPicker(){
  const sx=$("svBox"),sctx=sx.getContext("2d");
@@ -164,7 +178,6 @@ function renderPicker(){
  const g2=sctx.createLinearGradient(0,0,0,sx.height);
  g2.addColorStop(0,"rgba(0,0,0,0)");g2.addColorStop(1,"#000");
  sctx.fillStyle=g2;sctx.fillRect(0,0,sx.width,sx.height);
- // 当前点
  const x=cur.s*sx.width,y=(1-cur.v)*sx.height;
  sctx.strokeStyle="#fff";sctx.lineWidth=3;sctx.beginPath();sctx.arc(x,y,7,0,7);sctx.stroke();
  sctx.strokeStyle="#000";sctx.lineWidth=1.5;sctx.beginPath();sctx.arc(x,y,8.5,0,7);sctx.stroke();
@@ -188,16 +201,13 @@ function pickHue(e){
  const r=$("hueBar").getBoundingClientRect();
  setCur(Math.min(360,Math.max(0,(e.clientY-r.top)/r.height*360)),cur.s,cur.v,false);
 }
-function commitColor(){ // 取色完成，入历史
- setCur(cur.h,cur.s,cur.v,true);
-}
-["svBox","hueBar"].forEach(id=>$(id).addEventListener("pointerup",commitColor));
+["svBox","hueBar"].forEach(id=>$(id).addEventListener("pointerup",()=>setCur(cur.h,cur.s,cur.v,true)));
 function renderHist(){
  const row=$("histRow");row.innerHTML="";
  hist.forEach((c,i)=>{
   const d=document.createElement("div");d.className="chip"+(i===0?" sel":"");
   d.style.background=c;
-  d.onclick=()=>{const rgb=hexToRgb(c);rgbToHsv(rgb,cur);setCur(cur.h,cur.s,cur.v,true);};
+  d.onclick=()=>{rgbToHsv(hexToRgb(c),cur);setCur(cur.h,cur.s,cur.v,true);};
   row.appendChild(d);
  });
 }
@@ -244,40 +254,22 @@ function resize(){
  draw();
 }
 window.addEventListener("resize",resize);
-$("fileBtn").onclick=()=>$("file").click();
-$("file").onchange=e=>{
- const f=e.target.files[0];if(!f)return;
- const img=new Image();
- img.onload=()=>{
-  let w=img.width,h=img.height;
-  const LIMIT=4096;
-  if(Math.max(w,h)>LIMIT){
-   const k=LIMIT/Math.max(w,h);w=Math.round(w*k);h=Math.round(h*k);
-  }
-  lineCv=document.createElement("canvas");lineCv.width=w;lineCv.height=h;
-  lineCv.getContext("2d").drawImage(img,0,0,w,h);
-  colorCv=document.createElement("canvas");colorCv.width=w;colorCv.height=h;
-  undos=[];
-  fitView();$("hint").style.display="none";draw();
- };
- img.onerror=()=>alert("图片读不出来，换一张PNG试试");
- img.src=URL.createObjectURL(f);
- e.target.value="";
-};
-function fitView(){
- const r=wrap.getBoundingClientRect();
- scale=Math.min((r.width-40)/lineCv.width,(r.height-40)/lineCv.height,2);
- scale=Math.max(scale,0.05);
- ox=(r.width-lineCv.width*scale)/2;oy=(r.height-lineCv.height*scale)/2;
+function canvasSize(){
+ return layers.length?layers[0].cv.width:0;
 }
 function draw(){
  const r=wrap.getBoundingClientRect();
  vctx.setTransform(DPR,0,0,DPR,0,0);
  vctx.clearRect(0,0,r.width,r.height);
- if(!lineCv)return;
+ if(!layers.length)return;
  vctx.setTransform(DPR*scale,0,0,DPR*scale,DPR*ox,DPR*oy);
- vctx.drawImage(colorCv,0,0);
- vctx.drawImage(lineCv,0,0);
+ for(let i=0;i<layers.length;i++){
+  const l=layers[i];
+  if(!l.visible)continue;
+  vctx.globalAlpha=l.opacity/255;
+  vctx.drawImage(l.cv,0,0);
+ }
+ vctx.globalAlpha=1;
  if(pts.length>1){
   vctx.strokeStyle=curHex();vctx.lineWidth=2/scale;vctx.lineCap="round";vctx.lineJoin="round";
   vctx.beginPath();
@@ -291,21 +283,247 @@ function toWork(cx,cy){
  return {x:(cx-r.left-ox)/scale,y:(cy-r.top-oy)/scale};
 }
 
+/* ---------- 图层 ---------- */
+function renderLayers(){
+ const bar=$("layerBar");bar.innerHTML="";
+ for(let i=layers.length-1;i>=0;i--){
+  const l=layers[i];
+  const d=document.createElement("div");
+  d.className="lyr"+(i===activeIdx?" on":"")+(l.visible?"":" hidden");
+  const c=document.createElement("canvas");c.width=40;c.height=40;
+  const cc=c.getContext("2d");
+  cc.fillStyle="#40404a";cc.fillRect(0,0,40,40);
+  cc.drawImage(l.cv,0,0,40,40);
+  const nm=document.createElement("div");nm.className="nm";nm.textContent=l.name;
+  const eye=document.createElement("div");eye.className="eye";eye.textContent=l.visible?"👁":"✕";
+  d.appendChild(c);d.appendChild(nm);d.appendChild(eye);
+  d.onclick=e=>{
+   if(e.target===eye){l.visible=!l.visible;renderLayers();draw();return;}
+   activeIdx=i;renderLayers();
+  };
+  bar.appendChild(d);
+ }
+ const add=document.createElement("div");add.id="lyrAdd";add.textContent="+";
+ add.onclick=newLayer;
+ bar.appendChild(add);
+}
+function newLayer(){
+ const w=canvasSize();
+ if(!w)return alert("先导入文件");
+ const c=document.createElement("canvas");c.width=w;c.height=layers[0].cv.height;
+ layers.push({name:"图层"+(++layNum),visible:true,opacity:255,cv:c});
+ activeIdx=layers.length-1;
+ undos=[];
+ renderLayers();draw();
+}
+$("newLayerBtn").onclick=newLayer;
+$("delBtn").onclick=()=>{
+ if(!layers.length)return;
+ if(layers.length===1)return alert("至少留一层");
+ layers.splice(activeIdx,1);
+ activeIdx=Math.min(activeIdx,layers.length-1);
+ undos=[];
+ renderLayers();draw();
+};
+$("upBtn").onclick=()=>{
+ if(activeIdx<layers.length-1){
+  const t=layers[activeIdx];layers[activeIdx]=layers[activeIdx+1];layers[activeIdx+1]=t;
+  activeIdx++;
+  renderLayers();draw();
+ }
+};
+$("downBtn").onclick=()=>{
+ if(activeIdx>0){
+  const t=layers[activeIdx];layers[activeIdx]=layers[activeIdx-1];layers[activeIdx-1]=t;
+  activeIdx--;
+  renderLayers();draw();
+ }
+};
+
+/* ---------- 导入 ---------- */
+$("fileBtn").onclick=()=>$("file").click();
+$("file").onchange=async e=>{
+ const f=e.target.files[0];if(!f)return;
+ showBusy(true);
+ try{
+  if(f.name.toLowerCase().endsWith(".psd")){
+   await loadPsd(await f.arrayBuffer());
+  } else {
+   await loadImage(f);
+  }
+  $("hint").style.display="none";
+ }catch(err){
+  alert("读不了："+err.message);
+ }
+ e.target.value="";
+ showBusy(false);
+};
+function loadImage(f){
+ return new Promise((res,rej)=>{
+  const img=new Image();
+  img.onload=()=>{
+   let w=img.width,h=img.height;
+   const LIMIT=4096;
+   if(Math.max(w,h)>LIMIT){const k=LIMIT/Math.max(w,h);w=Math.round(w*k);h=Math.round(h*k);}
+   const lc=document.createElement("canvas");lc.width=w;lc.height=h;
+   const cc=document.createElement("canvas");cc.width=w;cc.height=h;
+   lc.getContext("2d").drawImage(img,0,0,w,h);
+   layers=[{name:"线稿",visible:true,opacity:255,cv:lc},
+           {name:"颜色",visible:true,opacity:255,cv:cc}];
+   activeIdx=0;layNum=1;undos=[];
+   fitView();renderLayers();draw();res();
+  };
+  img.onerror=()=>rej(new Error("图片读不出来"));
+  img.src=URL.createObjectURL(f);
+ });
+}
+function fitView(){
+ const r=wrap.getBoundingClientRect();
+ const w=canvasSize();
+ scale=Math.min((r.width-40)/w,(r.height-40)/w,2);
+ scale=Math.max(scale,0.05);
+ ox=(r.width-w*scale)/2;oy=(r.height-w*scale)/2;
+}
+
+/* ---------- PSD 读取 ---------- */
+function unpackRow(u8,si,len,out,di,w){
+ let i=si;
+ while(i<si+len){
+  const n=u8[i++];
+  if(n>=128){
+   const v=u8[i++];
+   for(let k=0;k<257-n;k++)out[di++]=v;
+  } else {
+   const cnt=n+1;
+   for(let k=0;k<cnt;k++)out[di++]=u8[i++];
+  }
+ }
+}
+function loadPsd(buf){
+ return new Promise(res=>{
+  const u8=new Uint8Array(buf);
+  const dv=new DataView(buf);
+  let o=0;
+  if(String.fromCharCode(u8[0],u8[1],u8[2],u8[3])!=="8BPS")throw new Error("不是PSD文件");
+  o=4;
+  o+=2+6;
+  o+=2;
+  const h=dv.getUint32(o);o+=4;
+  const w=dv.getUint32(o);o+=4;
+  const depth=dv.getUint16(o);o+=2;
+  const mode=dv.getUint16(o);o+=2;
+  if(depth!==8)throw new Error("只支持8位PSD");
+  if(mode!==3&&mode!==1)throw new Error("只支持RGB/灰度PSD，CMYK打不开");
+  if(w>4096||h>4096)throw new Error("画布超过4096，太大了");
+  o+=4+dv.getUint32(o);
+  o+=4+dv.getUint32(o);
+  o+=4;
+  o+=4;
+  const cnt=dv.getInt16(o);o+=2;
+  const n=Math.abs(cnt);
+  const metas=[];
+  for(let i=0;i<n;i++){
+   const top=dv.getInt32(o),left=dv.getInt32(o+4),bottom=dv.getInt32(o+8),right=dv.getInt32(o+12);o+=16;
+   const nch=dv.getUint16(o);o+=2;
+   const chs=[];
+   for(let c=0;c<nch;c++){chs.push({id:dv.getInt16(o),len:dv.getUint32(o+2)});o+=6;}
+   o+=8;
+   const opacity=dv.getUint8(o);o++;
+   o++;
+   const flags=dv.getUint8(o);o++;
+   o++;
+   const extraLen=dv.getUint32(o);o+=4;
+   const extraEnd=o+extraLen;
+   o+=4+dv.getUint32(o);
+   o+=4+dv.getUint32(o);
+   const nameLen=dv.getUint8(o);o++;
+   let name="";
+   for(let k=0;k<nameLen;k++)name+=String.fromCharCode(u8[o+k]);
+   const pad=(4-((1+nameLen)%4))%4;
+   o+=nameLen+pad;
+   if(!name)name="图层"+i;
+   for(let s=o;s<extraEnd-8;s++){
+    if(u8[s]===0x38&&u8[s+1]===0x42&&u8[s+2]===0x49&&u8[s+3]===0x4D&&
+       u8[s+4]===0x6C&&u8[s+5]===0x75&&u8[s+6]===0x6E&&u8[s+7]===0x69){
+     const ll=dv.getUint32(s+8);
+     let un="";
+     for(let k=0;k<ll;k+=2)un+=String.fromCharCode(dv.getUint16(s+12+k));
+     if(un)name=un;
+     break;
+    }
+   }
+   metas.push({top,left,bottom,right,chs,opacity,visible:!(flags&2),name});
+   o=extraEnd;
+  }
+  const outLayers=[];
+  for(const m of metas){
+   const lw=m.right-m.left,lh=m.bottom-m.top;
+   const chans={};
+   for(const ci of m.chs){
+    const comp=dv.getUint16(o);o+=2;
+    const data=new Uint8Array(lw*lh);
+    if(comp===0){
+     for(let y=0;y<lh;y++){
+      o+=2;
+      for(let x=0;x<lw;x++)data[y*lw+x]=u8[o+x];
+      o+=lw;
+     }
+    } else if(comp===1){
+     for(let y=0;y<lh;y++){
+      const rl=dv.getUint16(o);o+=2;
+      unpackRow(u8,o,rl,data,y*lw,lw);
+      o+=rl;
+     }
+    } else {
+     o+=ci.len-2;
+     continue;
+    }
+    chans[ci.id]=data;
+   }
+   const cv=document.createElement("canvas");cv.width=w;cv.height=h;
+   const ctx=cv.getContext("2d");
+   const img=ctx.createImageData(w,h);
+   const R=chans[0],G=chans[1],B=chans[2],A=chans[-1];
+   const gray=mode===1;
+   for(let y=0;y<lh;y++){
+    for(let x=0;x<lw;x++){
+     const s=y*lw+x;
+     const di=((m.top+y)*w+(m.left+x))*4;
+     if(gray){
+      const gv=R?R[s]:0;
+      img.data[di]=gv;img.data[di+1]=gv;img.data[di+2]=gv;
+     } else {
+      img.data[di]=R?R[s]:0;
+      img.data[di+1]=G?G[s]:0;
+      img.data[di+2]=B?B[s]:0;
+     }
+     img.data[di+3]=A?A[s]:255;
+    }
+   }
+   ctx.putImageData(img,0,0);
+   outLayers.push({name:m.name,visible:m.visible,opacity:m.opacity,cv});
+  }
+  if(!outLayers.length)throw new Error("PSD里没有图层");
+  layers=outLayers.reverse();
+  activeIdx=layers.length-1;
+  layNum=layers.length;undos=[];
+  fitView();renderLayers();draw();
+  res();
+ });
+}
+
 /* ---------- 手势 ---------- */
 let touchMode=null;
 wrap.addEventListener("pointerdown",e=>{
- if(!lineCv)return;
- const r=wrap.getBoundingClientRect();
+ if(!layers.length)return;
  if(pinch){return;}
- if(e.pointerType==="touch"){
-  touchMode="pending";
- } else if(e.pointerType==="mouse"&&e.button===0){
+ if(e.pointerType==="mouse"&&e.button===0){
   drawing=true;pts=[toWork(e.clientX,e.clientY)];
   wrap.setPointerCapture(e.pointerId);
  }
 });
 wrap.addEventListener("pointermove",e=>{
- if(!lineCv)return;
+ if(!layers.length)return;
  if(e.pointerType==="mouse"&&drawing){
   pts.push(toWork(e.clientX,e.clientY));draw();
  }
@@ -318,7 +536,7 @@ wrap.addEventListener("pointerup",e=>{
  }
 });
 wrap.addEventListener("touchstart",e=>{
- if(!lineCv)return;
+ if(!layers.length)return;
  if(e.touches.length===1&&!pinch){
   touchMode="draw";
   pts=[toWork(e.touches[0].clientX,e.touches[0].clientY)];
@@ -333,7 +551,7 @@ wrap.addEventListener("touchstart",e=>{
  e.preventDefault();
 },{passive:false});
 wrap.addEventListener("touchmove",e=>{
- if(!lineCv)return;
+ if(!layers.length)return;
  if(touchMode==="draw"&&e.touches.length===1){
   pts.push(toWork(e.touches[0].clientX,e.touches[0].clientY));
   if(pts.length>200)pts=pts.slice(-200);
@@ -343,7 +561,6 @@ wrap.addEventListener("touchmove",e=>{
   const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
   let ns=pinch.s0*d/pinch.d0;
   ns=Math.min(20,Math.max(0.05,ns));
-  const k=ns/pinch.s0;
   const mx=(a.clientX+b.clientX)/2,my=(a.clientY+b.clientY)/2;
   const wx=(pinch.mx-pinch.rx-pinch.ox)/pinch.s0;
   const wy=(pinch.my-pinch.ry-pinch.oy)/pinch.s0;
@@ -369,7 +586,6 @@ function boundsOf(pts){
  return {x0,y0,x1,y1};
 }
 function drawRingMask(mask,W,H,pts,x0,y0){
- // 画圈线（粗4px work）
  const lw=2;
  const plot=(x,y)=>{if(x>=0&&x<W&&y>=0&&y<H)mask[y*W+x]=1;};
  for(let i=0;i<pts.length-1;i++){
@@ -393,24 +609,24 @@ function insideMap(mask,W,H){
  }
  return ins;
 }
-function buildWallMap(data,W,H,wFull,x0,y0){
+function obstacleMap(x0,y0,W,H){
+ const w=layers[0].cv.width,h=layers[0].cv.height;
+ const obs=document.createElement("canvas");obs.width=w;obs.height=h;
+ const oc=obs.getContext("2d");
+ for(let i=0;i<layers.length;i++){
+  if(i===activeIdx||!layers[i].visible)continue;
+  oc.drawImage(layers[i].cv,0,0);
+ }
+ const d=oc.getImageData(x0,y0,W,H).data;
  const wall=new Uint8Array(W*H);
- for(let y=0;y<H;y++){
-  const yy=y0+y;
-  if(yy<0||yy>=lineCv.height)continue;
-  for(let x=0;x<W;x++){
-   const xx=x0+x;
-   if(xx<0||xx>=lineCv.width)continue;
-   const i=(yy*wFull+xx)*4;
-   const a=data[i+3];
-   if(a>20&&(data[i]+data[i+1]+data[i+2])/3<180)wall[y*W+x]=1;
-  }
+ for(let i=0;i<W*H;i++){
+  const o=i*4;
+  if(d[o+3]>20&&(d[o]+d[o+1]+d[o+2])/3<180)wall[i]=1;
  }
  return wall;
 }
 function dilateRect(src,dst,W,H,R){
  dst.fill(0);
- // 水平
  for(let y=0;y<H;y++){
   let last=-1e9;
   const base=y*W;
@@ -419,7 +635,6 @@ function dilateRect(src,dst,W,H,R){
  }
  src.set(dst);
  dst.fill(0);
- // 垂直
  for(let x=0;x<W;x++){
   let last=-1e9;
   for(let y=0;y<H;y++)if(src[y*W+x]){last=y;dst[y*W+x]=1;}else if(y-last<=R)dst[y*W+x]=1;
@@ -428,7 +643,6 @@ function dilateRect(src,dst,W,H,R){
 }
 function erodeRect(src,dst,W,H,R){
  dst.fill(0);
- // 水平: 像素保留当且仅当左右R内全1
  for(let y=0;y<H;y++){
   let run0=0;const base=y*W;
   for(let x=0;x<W;x++){
@@ -462,24 +676,24 @@ function erodeRect(src,dst,W,H,R){
  src.set(dst);
 }
 function doFill(pts){
- if(!lineCv)return;
+ if(!layers.length||activeIdx<0)return;
  const tol=+$("tol").value,pad=+$("pad").value;
+ const Wfull=layers[0].cv.width,Hfull=layers[0].cv.height;
  const b=boundsOf(pts);
  const MARGIN=tol+pad+8;
  const x0=Math.max(0,Math.floor(b.x0)-MARGIN);
  const y0=Math.max(0,Math.floor(b.y0)-MARGIN);
- const x1=Math.min(lineCv.width,Math.ceil(b.x1)+MARGIN);
- const y1=Math.min(lineCv.height,Math.ceil(b.y1)+MARGIN);
+ const x1=Math.min(Wfull,Math.ceil(b.x1)+MARGIN);
+ const y1=Math.min(Hfull,Math.ceil(b.y1)+MARGIN);
  const W=x1-x0,H=y1-y0;
  if(W<=0||H<=0)return;
  showBusy(true);
  setTimeout(()=>{
   try{
-   const lineData=lineCv.getContext("2d").getImageData(x0,y0,W,H).data;
    const ring=new Uint8Array(W*H);
    drawRingMask(ring,W,H,pts,x0,y0);
    const ins=insideMap(ring,W,H);
-   const wall=buildWallMap(lineData,W,H,lineCv.width,x0,y0);
+   const wall=obstacleMap(x0,y0,W,H);
    if(tol>0){
     const t=new Uint8Array(W*H);
     dilateRect(wall,t,W,H,tol);
@@ -487,11 +701,11 @@ function doFill(pts){
    }
    const fillM=new Uint8Array(W*H);
    for(let i=0;i<W*H;i++)if(ins[i]&&!wall[i])fillM[i]=1;
-   const col=colorCv.getContext("2d");
+   const lcv=layers[activeIdx].cv;
+   const col=lcv.getContext("2d");
    const img=col.getImageData(x0,y0,W,H);
    const rgb=hsvToRgb(cur.h,cur.s,cur.v);
-   // 快照
-   undos.push({x0,y0,W,H,data:new Uint8ClampedArray(img.data)});
+   undos.push({idx:activeIdx,x0,y0,W,H,data:new Uint8ClampedArray(img.data)});
    if(undos.length>3)undos.shift();
    const write=(i)=>{const o=i*4;img.data[o]=rgb[0];img.data[o+1]=rgb[1];img.data[o+2]=rgb[2];img.data[o+3]=255;};
    const q=[];let head=0;
@@ -510,7 +724,7 @@ function doFill(pts){
     }
    }
    col.putImageData(img,x0,y0);
-   draw();
+   draw();renderLayers();
   }catch(err){console.error(err);alert("处理出错："+err.message);}
   showBusy(false);
  },30);
@@ -521,30 +735,37 @@ function showBusy(v){$("busy").style.display=v?"block":"none";}
 $("undoBtn").onclick=()=>{
  if(!undos.length)return;
  const u=undos.pop();
- const img=colorCv.getContext("2d").getImageData(u.x0,u.y0,u.W,u.H);
+ const img=layers[u.idx].cv.getContext("2d").getImageData(u.x0,u.y0,u.W,u.H);
  img.data.set(u.data);
- colorCv.getContext("2d").putImageData(img,u.x0,u.y0);
- draw();
+ layers[u.idx].cv.getContext("2d").putImageData(img,u.x0,u.y0);
+ draw();renderLayers();
 };
 $("clearBtn").onclick=()=>{
- if(!colorCv)return;
+ if(!layers.length||activeIdx<0)return;
  undos=[];
- colorCv.getContext("2d").clearRect(0,0,colorCv.width,colorCv.height);
- draw();
+ layers[activeIdx].cv.getContext("2d").clearRect(0,0,layers[activeIdx].cv.width,layers[activeIdx].cv.height);
+ draw();renderLayers();
 };
 
 /* ---------- 导出 ---------- */
-function composite(){
- const c=document.createElement("canvas");c.width=lineCv.width;c.height=lineCv.height;
+function compositeVisible(){
+ const w=layers[0].cv.width,h=layers[0].cv.height;
+ const c=document.createElement("canvas");c.width=w;c.height=h;
  const ctx=c.getContext("2d");
- ctx.drawImage(colorCv,0,0);ctx.drawImage(lineCv,0,0);
+ for(let i=0;i<layers.length;i++){
+  const l=layers[i];
+  if(!l.visible)continue;
+  ctx.globalAlpha=l.opacity/255;
+  ctx.drawImage(l.cv,0,0);
+ }
+ ctx.globalAlpha=1;
  return c;
 }
 $("pngBtn").onclick=()=>{
- if(!lineCv)return alert("先导入线稿");
+ if(!layers.length)return alert("先导入文件");
  showBusy(true);
  setTimeout(()=>{
-  composite().toBlob(b=>{
+  compositeVisible().toBlob(b=>{
    const a=document.createElement("a");
    a.href=URL.createObjectURL(b);
    a.download="beixi-"+Date.now()+".png";
@@ -554,7 +775,7 @@ $("pngBtn").onclick=()=>{
  },30);
 };
 $("psdBtn").onclick=()=>{
- if(!lineCv)return alert("先导入线稿");
+ if(!layers.length)return alert("先导入文件");
  showBusy(true);
  setTimeout(()=>{
   try{
@@ -571,9 +792,7 @@ $("psdBtn").onclick=()=>{
 
 /* ---------- PSD 编码 ---------- */
 function makePsd(){
- const w=lineCv.width,h=lineCv.height;
- const li=lineCv.getContext("2d").getImageData(0,0,w,h).data;
- const ci=colorCv.getContext("2d").getImageData(0,0,w,h).data;
+ const w=layers[0].cv.width,h=layers[0].cv.height;
  const packRow=function(row){
   const out=[];let i=0;const n=row.length;
   while(i<n){
@@ -597,7 +816,8 @@ function makePsd(){
   }
   return out;
  };
- const encLayer=function(data){
+ const encLayer=function(l){
+  const data=l.cv.getContext("2d").getImageData(0,0,w,h).data;
   const chs=[];
   for(let c=0;c<4;c++){
    const rows=[];
@@ -610,23 +830,13 @@ function makePsd(){
   }
   return chs;
  };
- const lineCh=encLayer(li),colorCh=encLayer(ci);
- const merged=new Uint8Array(w*h*3);
- for(let i=0;i<w*h;i++){
-  const o=i*4;
-  const ca=ci[o+3]/255,la=li[o+3]/255;
-  const a=ca+la*(1-ca);
-  if(a>0.001){
-   merged[i*3]=Math.round((ci[o]*ca+li[o]*la*(1-ca))/a);
-   merged[i*3+1]=Math.round((ci[o+1]*ca+li[o+1]*la*(1-ca))/a);
-   merged[i*3+2]=Math.round((ci[o+2]*ca+li[o+2]*la*(1-ca))/a);
-  }
- }
+ const all=compositeVisible();
+ const md=all.getContext("2d").getImageData(0,0,w,h).data;
  const mRows=[[],[],[]];
  for(let c=0;c<3;c++)
   for(let y=0;y<h;y++){
    const row=new Uint8Array(w);
-   for(let x=0;x<w;x++)row[x]=merged[(y*w+x)*3+c];
+   for(let x=0;x<w;x++)row[x]=md[(y*w+x)*4+c];
    mRows[c].push(packRow(row));
   }
  const bytes=[];
@@ -634,73 +844,54 @@ function makePsd(){
  const p16=v=>{bytes.push((v>>8)&255,v&255);};
  const p32=v=>{bytes.push((v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255);};
  const pstr=s=>{for(let i=0;i<s.length;i++)p8(s.charCodeAt(i));};
- // 头
  pstr("8BPS");p16(1);p16(0);p32(0);p16(3);p32(h);p32(w);p16(8);p16(3);
- // 颜色模式数据
  p32(0);
- // 图像资源
  p32(0);
- // 图层与蒙版
- const chanLen=ch=>{let t=0;ch.forEach(rows=>rows.forEach(r=>t+=2+r.length));return t;};
- const rec=[];
- const p16r=v=>rec.push((v>>8)&255,v&255);
- const p32r=v=>rec.push((v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255);
- const p8r=v=>rec.push(v&255);
- const namePad=n=>{
-  const name=n.length;
-  let len=1+name;
-  const pad=(4-(len%4))%4;
-  return {len:len+pad,name:n};
- };
- const addLayer=(chs,nm)=>{
-  p32r(0);p32r(0);p32r(h);p32r(w);
-  p16r(4);
-  for(let c=0;c<4;c++){
-   p16r(c<3?c:0xFFFF);
-   p32r(chanLen(chs[c])?0:0);
-   const l=chanLen([chs[c]]);
-   p32r(l);
-  }
-  pstr("8BIM");pstr("norm");
-  p8r(255);p8r(0);p8r(0);p8r(0);
-  const np=namePad(nm);
-  p32r(4+4+np.len);
-  p32r(0);p32r(0);
-  p8r(nm.length);pstr(nm);
-  for(let i=0;i<np.len-1-nm.length;i++)p8r(0);
- };
  const layerInfo=[];
  const p16li=v=>layerInfo.push((v>>8)&255,v&255);
  const p32li=v=>layerInfo.push((v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255);
  const p8li=v=>layerInfo.push(v&255);
- const buildRec=function(chs,nm){
+ const psli=s=>{for(let i=0;i<s.length;i++)layerInfo.push(s.charCodeAt(i));};
+ const encLayers=layers.slice().reverse();
+ p16li(encLayers.length);
+ const recs=encLayers.map((l,idx)=>{
   const r=[];
-  const p16r2=v=>r.push((v>>8)&255,v&255);
-  const p32r2=v=>r.push((v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255);
-  const p8r2=v=>r.push(v&255);
-  const ps2=s=>{for(let i=0;i<s.length;i++)r.push(s.charCodeAt(i));};
-  p32r2(0);p32r2(0);p32r2(h);p32r2(w);
-  p16r2(4);
+  const p16r=v=>r.push((v>>8)&255,v&255);
+  const p32r=v=>r.push((v>>>24)&255,(v>>>16)&255,(v>>>8)&255,v&255);
+  const p8r=v=>r.push(v&255);
+  const psr=s=>{for(let i=0;i<s.length;i++)r.push(s.charCodeAt(i));};
+  const chs=encLayer(l);
+  p32r(0);p32r(0);p32r(h);p32r(w);
+  p16r(4);
   for(let c=0;c<4;c++){
-   p16r2(c<3?c:0xFFFF);
+   p16r(c<3?c:0xFFFF);
    let t=0;chs[c].forEach(rows=>rows.forEach(rw=>t+=2+rw.length));
-   p32r2(t);
+   p32r(t);
   }
-  ps2("8BIM");ps2("norm");
-  p8r2(255);p8r2(0);p8r2(0);p8r2(0);
-  const np=namePad(nm);
-  p32r2(4+4+np.len);
-  p32r2(0);p32r2(0);
-  p8r2(nm.length);ps2(nm);
-  for(let i=0;i<np.len-1-nm.length;i++)p8r2(0);
-  return r;
- };
- p16li(2);
- const r1=buildRec(lineCh,"lineart"),r2=buildRec(colorCh,"color");
- layerInfo.push(...r1,...r2);
- [lineCh,colorCh].forEach(chs=>{
+  psr("8BIM");psr("norm");
+  p8r(l.opacity);p8r(0);p8r(0);p8r(0);
+  const asciiName="layer"+idx;
+  const pascalLen=1+asciiName.length;
+  const pad1=(4-(pascalLen%4))%4;
+  let extraLen=4+4+pascalLen+pad1;
+  let luni="";
+  if(/[^\x00-\x7f]/.test(l.name))luni=l.name;
+  if(luni)extraLen+=4+4+luni.length*2;
+  p32r(extraLen);
+  p32r(0);p32r(0);
+  p8r(asciiName.length);psr(asciiName);
+  for(let i=0;i<pad1;i++)p8r(0);
+  if(luni){
+   psr("8BIM");psr("luni");
+   p32r(luni.length*2);
+   for(let i=0;i<luni.length;i++){const c=luni.charCodeAt(i);p8r((c>>8)&255);p8r(c&255);}
+  }
+  return {rec:r,chs};
+ });
+ recs.forEach(x=>layerInfo.push(...x.rec));
+ recs.forEach(x=>{
   for(let c=0;c<4;c++){
-   chs[c].forEach(rw=>{
+   x.chs[c].forEach(rw=>{
     p16li(rw.length);
     layerInfo.push(...rw);
    });
@@ -708,11 +899,9 @@ function makePsd(){
  });
  p32(layerInfo.length);
  bytes.push(...layerInfo);
- p32(0); // 全局图层蒙版
- // 合并图数据
+ p32(0);
  const imgBytes=[];
  const p16im=v=>imgBytes.push((v>>8)&255,v&255);
- const p8im=v=>imgBytes.push(v&255);
  for(let c=0;c<3;c++)
   mRows[c].forEach(rw=>{p16im(rw.length);imgBytes.push(...rw);});
  p32(imgBytes.length);
